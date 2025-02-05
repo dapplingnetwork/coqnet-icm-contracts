@@ -6,6 +6,9 @@ solc_version = '0.8.25'
 evm_version = 'shanghai'
 test = 'tests'
 bytecode_hash = "none"
+viaIR = true
+optimizer = true
+optimizer_runs = 200
 
 [fmt]
 line_length = 100
@@ -17,6 +20,25 @@ quote_style = 'double'
 number_underscores = 'thousands'
 override_spacing = true
 wrap_comments = false
+
+[profile.fuji]
+chain_id = 43113
+rpc_url = "${FUJI_RPC_URL}"
+gas_price = "auto"
+priority_fee = "auto"
+
+[profile.avax]
+inherits = "default"
+chain_id = 43114
+gas_price = "auto"
+priority_fee = "auto"
+
+[profile.default.rpc_endpoints]
+fuji = "${FUJI_RPC_URL}"
+avax = "${AVAX_RPC_URL}"
+
+[etherscan]
+avalanche-testnet = { key = "verifyContract", url = "https://api.routescan.io/v2/network/testnet/evm/43113/etherscan" }
 
 # Add the following to your VSCode settings to enable automatic formatting.
 # {

@@ -139,7 +139,13 @@ contract CoqnetERC20TokenStakingManager is
         uint16 delegationFeeBips,
         uint64 minStakeDuration,
         uint256 stakeAmount
-    ) external nonReentrant checkRegistration returns (bytes32 validationID) {
+    )
+        external
+        nonReentrant
+        onlyRole(REGISTER_ROLE)
+        checkRegistration
+        returns (bytes32 validationID)
+    {
         return _initializeValidatorRegistration(
             registrationInput, delegationFeeBips, minStakeDuration, stakeAmount
         );

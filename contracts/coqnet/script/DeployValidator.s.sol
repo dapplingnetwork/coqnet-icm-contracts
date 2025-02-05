@@ -15,11 +15,11 @@ contract DeployValidator is Script {
         //deploy implementation
         vm.startBroadcast(owner);
 
-        CoqnetERC20TokenStakingManager poaImplementation =
+        CoqnetERC20TokenStakingManager posImplementation =
             new CoqnetERC20TokenStakingManager(ICMInitializable.Allowed);
 
-        console.log("POAValidator implementation address:", address(poaImplementation));
-        // 0x2236b5c6b042F107b0B46b589c2E328108B430f6
+        console.log("POSValidator address:", address(posImplementation));
+        // 0xd9E3D21f5798F9d400DD03F4C7Dc3554Df49d3C1
         vm.stopBroadcast();
         // forge script script/DeployValidator.s.sol --rpc-url https://api.avax-test.network/ext/bc/C/rpc --broadcast
     }
