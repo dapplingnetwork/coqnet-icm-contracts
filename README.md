@@ -1,3 +1,7 @@
+# COQNET
+https://github.com/dapplingnetwork/coqnet-icm-contracts/tree/main/contracts/coqnet for the COQNET contracts
+This replaced the no longer used https://github.com/multisig-labs/custom-validator-manager repo
+
 # ICM Contracts
 
 For help getting started with building ICM contracts, refer to [the avalanche-starter-kit repository](https://github.com/ava-labs/avalanche-starter-kit).
