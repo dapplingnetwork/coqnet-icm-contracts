@@ -106,7 +106,7 @@ contract CoqnetERC20TokenStakingManager is
         PoSValidatorManagerSettings calldata settings,
         IERC20Mintable token,
         address admin
-    ) external reinitializer(8) {
+    ) external reinitializer(9) {
         __ERC20TokenStakingManager_init(settings, token);
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
     }
@@ -227,6 +227,20 @@ contract CoqnetERC20TokenStakingManager is
         return super._initializeEndPoSValidation(
             validationID, includeUptimeProof, messageIndex, rewardRecipient
         );
+    }
+
+    function getPoSValidators(
+        bytes32[] calldata validationIDs
+    ) external view returns (address[] memory owners) {
+        PoSValidatorManagerStorage storage $ = _getPoSValidatorManagerStorage();
+
+        address[] memory owners = new address[](validationIDs.length);
+
+        for (uint256 i = 0; i < validationIDs.length; i++) {
+            owners[i] = $._posValidatorInfo[validationIDs[i]].owner;
+        }
+
+        return owners;
     }
 
     function setMaxValidators(

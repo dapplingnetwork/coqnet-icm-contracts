@@ -39,7 +39,7 @@ contract UpgradePOAtoPOS is Script {
         ITransparentUpgradeableProxy transparentProxy =
             ITransparentUpgradeableProxy(0x0ec8F51391b3976B406ec182c8c22e537Ff14ECa);
         CoqnetERC20TokenStakingManager posImplementation =
-            CoqnetERC20TokenStakingManager(0xd9E3D21f5798F9d400DD03F4C7Dc3554Df49d3C1);
+            CoqnetERC20TokenStakingManager(0xd441929a278a01303547e643F4798d9Bb5b4FCf8);
         WCOQ token = WCOQ(0xDc3b0E30d1D079159B616b2Bf618D17167EBd5fB);
 
         PoSValidatorManagerSettings memory settings = _defaultPoSSettings();
