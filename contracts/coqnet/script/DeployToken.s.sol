@@ -17,7 +17,7 @@ contract DeployToken is Script {
         WCOQ token = new WCOQ();
 
         console.log("WCOQ address:", address(token));
-        // 0xDc3b0E30d1D079159B616b2Bf618D17167EBd5fB
+        // mainnet: 0x6FED18dbBd1E80D70AB633b55Abb820890ABFf27
         vm.stopBroadcast();
 
         // forge script contracts/coqnet/script/DeployToken.s.sol --rpc-url avax

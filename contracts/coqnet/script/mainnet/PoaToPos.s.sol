@@ -21,8 +21,8 @@ contract MainnetUpgradePOAtoPOS is Script {
     bytes32 public constant SOURCE_BLOCKCHAIN_ID =
         bytes32(hex"898b8aa8353f2b79ee1de07c36474fcee339003d90fa06ea3a90d9e88b7d7c33");
 
-    uint256 public constant MINIMUM_STAKE_AMOUNT = 560e24;
-    uint256 public constant MAXIMUM_STAKE_AMOUNT = 560e24;
+    uint256 public constant MINIMUM_STAKE_AMOUNT = 2.5e25;
+    uint256 public constant MAXIMUM_STAKE_AMOUNT = 2.5e25;
     uint64 public constant CHURN_PERIOD = 60 seconds;
     uint8 public constant MAXIMUM_CHURN_PERCENTAGE = 80;
 
@@ -30,7 +30,7 @@ contract MainnetUpgradePOAtoPOS is Script {
     uint16 public constant MINIMUM_DELEGATION_FEE_BIPS = 100;
     uint8 public constant MAXIMUM_STAKE_MULTIPLIER = 1;
     uint256 public constant WEIGHT_TO_VALUE_FACTOR = 1e25;
-    address public constant REWARDS_CALCULATOR = 0x7906466991143f662faC3B06D5e3846e4c6CC893;
+    address public constant REWARDS_CALCULATOR = 0x34d58daD810c5B8833f262e9619EE5E33eC73C44;
     address public validatorOwner = 0xb4f69B081E784d50FF0a1ec1d46570ABAC7a221d;
 
     function run() public {
@@ -41,9 +41,9 @@ contract MainnetUpgradePOAtoPOS is Script {
             ITransparentUpgradeableProxy(0x1424Aef0d5272373BEB69b2a860bd1da078df67F);
 
         CoqnetERC20TokenStakingManager posImplementation =
-            CoqnetERC20TokenStakingManager(0xd441929a278a01303547e643F4798d9Bb5b4FCf8);
+            CoqnetERC20TokenStakingManager(0x8e04217e68dE3d7D6f9810b2157Dd46E3A15FEaC);
 
-        WCOQ token = WCOQ(0xDc3b0E30d1D079159B616b2Bf618D17167EBd5fB);
+        WCOQ token = WCOQ(0x6FED18dbBd1E80D70AB633b55Abb820890ABFf27);
 
         PoSValidatorManagerSettings memory settings = _defaultPoSSettings();
         bytes memory data = abi.encodeCall(

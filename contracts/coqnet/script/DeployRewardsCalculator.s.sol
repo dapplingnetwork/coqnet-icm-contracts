@@ -18,7 +18,7 @@ contract DeployRewardsCalculator is Script {
         RewardsCalculator rewards = new RewardsCalculator(DEFAULT_REWARD_BASIS_POINTS);
 
         console.log("RewardsCalculator:", address(rewards));
-        // 0x2eD5aBb96D0C06a6e79527027DE4D97Cc30c9452
+        // mainnet: 0x34d58daD810c5B8833f262e9619EE5E33eC73C44
         vm.stopBroadcast();
 
         // forge script contracts/coqnet/script/DeployRewardsCalculator.s.sol --rpc-url avax

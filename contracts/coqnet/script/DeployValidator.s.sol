@@ -18,7 +18,7 @@ contract DeployValidator is Script {
             new CoqnetERC20TokenStakingManager(ICMInitializable.Allowed);
 
         console.log("POSValidator address:", address(posImplementation));
-        // 0xd441929a278a01303547e643F4798d9Bb5b4FCf8
+        // mainnet: 0x8e04217e68dE3d7D6f9810b2157Dd46E3A15FEaC
         vm.stopBroadcast();
         // forge script contracts/coqnet/script/DeployValidator.s.sol --rpc-url avax
     }
