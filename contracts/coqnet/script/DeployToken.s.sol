@@ -9,10 +9,10 @@ import {WCOQ} from "../WCOQ.sol";
 //solhint-disable no-console
 contract DeployToken is Script {
     function run() public {
-        uint256 owner = vm.envUint("VALIDATOR_MANAGER_OWNER_PK");
+        uint256 deployer = vm.envUint("DEPLOYER");
 
         //deploy token
-        vm.startBroadcast(owner);
+        vm.startBroadcast(deployer);
 
         WCOQ token = new WCOQ();
 
@@ -20,6 +20,6 @@ contract DeployToken is Script {
         // 0xDc3b0E30d1D079159B616b2Bf618D17167EBd5fB
         vm.stopBroadcast();
 
-        // forge script script/DeployToken.s.sol --rpc-url https://api.avax-test.network/ext/bc/C/rpc --broadcast
+        // forge script contracts/coqnet/script/DeployToken.s.sol --rpc-url avax
     }
 }

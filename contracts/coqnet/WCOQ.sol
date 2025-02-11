@@ -14,12 +14,11 @@ contract WCOQ is ERC20Burnable, AccessControl {
     string private constant _TOKEN_NAME = "Wrapped Coqnet Token";
     string private constant _TOKEN_SYMBOL = "WCOQ";
     bytes32 public constant ISSUER_ROLE = keccak256("ISSUER_ROLE");
-
-    error WrappedCOQ_MaxMintExceed();
+    address public constant OWNER = 0x6b207141f47d749321C40D023F5981fdc5E2434d;
 
     constructor() ERC20(_TOKEN_NAME, _TOKEN_SYMBOL) {
-        _mint(msg.sender, 1e28);
-        _grantRole(DEFAULT_ADMIN_ROLE, _msgSender());
+        _mint(OWNER, 1e28);
+        _grantRole(DEFAULT_ADMIN_ROLE, OWNER);
     }
 
     function mint(address account, uint256 amount) external onlyRole(ISSUER_ROLE) {

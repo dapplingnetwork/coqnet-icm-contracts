@@ -10,10 +10,9 @@ import {CoqnetERC20TokenStakingManager} from "../CoqnetERC20TokenStakingManager.
 //solhint-disable no-console
 contract DeployValidator is Script {
     function run() public {
-        uint256 owner = vm.envUint("VALIDATOR_MANAGER_OWNER_PK");
+        uint256 deployer = vm.envUint("DEPLOYER");
 
-        //deploy implementation
-        vm.startBroadcast(owner);
+        vm.startBroadcast(deployer);
 
         CoqnetERC20TokenStakingManager posImplementation =
             new CoqnetERC20TokenStakingManager(ICMInitializable.Allowed);
@@ -21,6 +20,6 @@ contract DeployValidator is Script {
         console.log("POSValidator address:", address(posImplementation));
         // 0xd441929a278a01303547e643F4798d9Bb5b4FCf8
         vm.stopBroadcast();
-        // forge script script/DeployValidator.s.sol --rpc-url https://api.avax-test.network/ext/bc/C/rpc --broadcast
+        // forge script contracts/coqnet/script/DeployValidator.s.sol --rpc-url avax
     }
 }
