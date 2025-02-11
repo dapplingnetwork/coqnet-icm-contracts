@@ -30,8 +30,9 @@ contract MainnetUpgradePOAtoPOS is Script {
     uint16 public constant MINIMUM_DELEGATION_FEE_BIPS = 100;
     uint8 public constant MAXIMUM_STAKE_MULTIPLIER = 1;
     uint256 public constant WEIGHT_TO_VALUE_FACTOR = 1e25;
+
     address public constant REWARDS_CALCULATOR = 0x34d58daD810c5B8833f262e9619EE5E33eC73C44;
-    address public validatorOwner = 0xC7594321aE94e5fE885aAE30Cb100D80dE8d9f58;
+    address public owner = 0x6b207141f47d749321C40D023F5981fdc5E2434d;
     address public constant COQ = 0x420FcA0121DC28039145009570975747295f2329;
 
     function run() public {
@@ -45,9 +46,8 @@ contract MainnetUpgradePOAtoPOS is Script {
             CoqnetERC20TokenStakingManager(0x8e04217e68dE3d7D6f9810b2157Dd46E3A15FEaC);
 
         PoSValidatorManagerSettings memory settings = _defaultPoSSettings();
-        bytes memory data = abi.encodeCall(
-            posImplementation.initialize, (settings, IERC20Mintable(COQ), validatorOwner)
-        );
+        bytes memory data =
+            abi.encodeCall(posImplementation.initialize, (settings, IERC20Mintable(COQ), owner));
 
         vm.startBroadcast(validatorOwnerPK);
 
