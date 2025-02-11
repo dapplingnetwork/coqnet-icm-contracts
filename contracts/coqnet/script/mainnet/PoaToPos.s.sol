@@ -31,7 +31,7 @@ contract MainnetUpgradePOAtoPOS is Script {
     uint8 public constant MAXIMUM_STAKE_MULTIPLIER = 1;
     uint256 public constant WEIGHT_TO_VALUE_FACTOR = 1e25;
     address public constant REWARDS_CALCULATOR = 0x34d58daD810c5B8833f262e9619EE5E33eC73C44;
-    address public validatorOwner = 0xb4f69B081E784d50FF0a1ec1d46570ABAC7a221d;
+    address public validatorOwner = 0xC7594321aE94e5fE885aAE30Cb100D80dE8d9f58;
 
     function run() public {
         uint256 validatorOwnerPK = vm.envUint("VALIDATOR_MANAGER_OWNER_PK");
