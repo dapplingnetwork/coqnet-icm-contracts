@@ -33,9 +33,16 @@ chain_id = 43114
 gas_price = "auto"
 priority_fee = "auto"
 
+[profile.coqnet]
+inherits = "default"
+chain_id = 42069
+gas_price = "auto"
+priority_fee = "auto"
+
 [profile.default.rpc_endpoints]
 fuji = "${FUJI_RPC_URL}"
 avax = "${AVAX_RPC_URL}"
+coqnet = "${COQNET_RPC_URL}"
 
 [etherscan]
 avalanche-testnet = { key = "verifyContract", url = "https://api.routescan.io/v2/network/testnet/evm/43113/etherscan" }
