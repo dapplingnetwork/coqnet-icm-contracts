@@ -37,6 +37,7 @@ contract MainnetUpgradePOAtoPOS is Script {
 
     function run() public {
         uint256 validatorOwnerPK = vm.envUint("VALIDATOR_MANAGER_OWNER_PK");
+        vm.startBroadcast(validatorOwnerPK);
 
         ProxyAdmin admin = ProxyAdmin(0xf3a23A5a144047478718e6F9C65fAB94C2B89D17);
         ITransparentUpgradeableProxy transparentProxy =
@@ -48,8 +49,6 @@ contract MainnetUpgradePOAtoPOS is Script {
         PoSValidatorManagerSettings memory settings = _defaultPoSSettings();
         bytes memory data =
             abi.encodeCall(posImplementation.initialize, (settings, IERC20Mintable(COQ), owner));
-
-        vm.startBroadcast(validatorOwnerPK);
 
         admin.upgradeAndCall(transparentProxy, address(posImplementation), data);
 
