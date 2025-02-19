@@ -21,8 +21,8 @@ contract MainnetUpgradePOAtoPOS is Script {
     bytes32 public constant SOURCE_BLOCKCHAIN_ID =
         bytes32(hex"898b8aa8353f2b79ee1de07c36474fcee339003d90fa06ea3a90d9e88b7d7c33");
 
-    uint256 public constant MINIMUM_STAKE_AMOUNT = 2.5e25;
-    uint256 public constant MAXIMUM_STAKE_AMOUNT = 2.5e25;
+    uint256 public constant MINIMUM_STAKE_AMOUNT = 20_000_000e18;
+    uint256 public constant MAXIMUM_STAKE_AMOUNT = 20_000_000e18;
     uint64 public constant CHURN_PERIOD = 60 seconds;
     uint8 public constant MAXIMUM_CHURN_PERCENTAGE = 80;
 
