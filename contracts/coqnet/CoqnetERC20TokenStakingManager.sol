@@ -43,6 +43,8 @@ contract CoqnetERC20TokenStakingManager is
     struct CoqnetMetricsStorage {
         uint256 _validatorsRegistered;
         uint256 _maxValidators;
+        uint256 _maxNodesPerValidator;
+        mapping(address => uint256) _nodesPerValidator;
     }
     // solhint-enable private-vars-leading-underscore
 
@@ -106,9 +108,11 @@ contract CoqnetERC20TokenStakingManager is
         PoSValidatorManagerSettings calldata settings,
         IERC20Mintable token,
         address admin
-    ) external reinitializer(2) {
+    ) external reinitializer(4) {
         __ERC20TokenStakingManager_init(settings, token);
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        CoqnetMetricsStorage storage $metrics = _getCoqnetMetricsStorage();
+        $metrics._maxNodesPerValidator = 3;
     }
 
     // solhint-disable-next-line func-name-mixedcase
@@ -167,6 +171,12 @@ contract CoqnetERC20TokenStakingManager is
         checkRegistration
         returns (bytes32 validationID)
     {
+        CoqnetMetricsStorage storage $metrics = _getCoqnetMetricsStorage();
+        if ($metrics._nodesPerValidator[validator] >= $metrics._maxNodesPerValidator) {
+            revert ValidatorRegistrationExceeded();
+        }
+
+        ++$metrics._nodesPerValidator[validator];
         PoSValidatorManagerStorage storage $ = _getPoSValidatorManagerStorage();
         validationID = _initializeValidatorRegistration(
             registrationInput, delegationFeeBips, minStakeDuration, stakeAmount
@@ -224,6 +234,11 @@ contract CoqnetERC20TokenStakingManager is
             revert UnauthorizedOwner(_msgSender());
         }
 
+        CoqnetMetricsStorage storage $metrics = _getCoqnetMetricsStorage();
+        if ($metrics._nodesPerValidator[_msgSender()] > 0) {
+            --$metrics._nodesPerValidator[_msgSender()];
+        }
+
         return super._initializeEndPoSValidation(
             validationID, includeUptimeProof, messageIndex, rewardRecipient
         );
@@ -248,5 +263,12 @@ contract CoqnetERC20TokenStakingManager is
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         CoqnetMetricsStorage storage $ = _getCoqnetMetricsStorage();
         $._maxValidators = maxValidators;
+    }
+
+    function setMaxNodesPerValidator(
+        uint256 maxNodesPerValidator
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        CoqnetMetricsStorage storage $ = _getCoqnetMetricsStorage();
+        $._maxNodesPerValidator = maxNodesPerValidator;
     }
 }

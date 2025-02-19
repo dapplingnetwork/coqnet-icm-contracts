@@ -43,7 +43,7 @@ contract MainnetUpgradePOAtoPOS is Script {
             ITransparentUpgradeableProxy(0x1424Aef0d5272373BEB69b2a860bd1da078df67F);
 
         CoqnetERC20TokenStakingManager posImplementation =
-            CoqnetERC20TokenStakingManager(0x8e04217e68dE3d7D6f9810b2157Dd46E3A15FEaC);
+            new CoqnetERC20TokenStakingManager(ICMInitializable.Disallowed);
 
         PoSValidatorManagerSettings memory settings = _defaultPoSSettings();
         bytes memory data =
