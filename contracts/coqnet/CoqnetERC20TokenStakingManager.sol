@@ -108,7 +108,7 @@ contract CoqnetERC20TokenStakingManager is
         PoSValidatorManagerSettings calldata settings,
         IERC20Mintable token,
         address admin
-    ) external reinitializer(4) {
+    ) external reinitializer(6) {
         __ERC20TokenStakingManager_init(settings, token);
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         CoqnetMetricsStorage storage $metrics = _getCoqnetMetricsStorage();

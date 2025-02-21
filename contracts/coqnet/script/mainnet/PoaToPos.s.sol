@@ -29,7 +29,7 @@ contract MainnetUpgradePOAtoPOS is Script {
     uint64 public constant MINIMUM_STAKE_DURATION = 61 seconds;
     uint16 public constant MINIMUM_DELEGATION_FEE_BIPS = 100;
     uint8 public constant MAXIMUM_STAKE_MULTIPLIER = 1;
-    uint256 public constant WEIGHT_TO_VALUE_FACTOR = 1e25;
+    uint256 public constant WEIGHT_TO_VALUE_FACTOR = 0.02e25;
 
     address public constant REWARDS_CALCULATOR = 0x34d58daD810c5B8833f262e9619EE5E33eC73C44;
     address public owner = 0x6b207141f47d749321C40D023F5981fdc5E2434d;
