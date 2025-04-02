@@ -23,6 +23,7 @@ import {WCOQ} from "../WCOQ.sol";
 import {ValidatorMessages} from "@validator-manager/ValidatorMessages.sol";
 import {ValidatorManagerSettings} from "@validator-manager/interfaces/IValidatorManager.sol";
 import {IRewardCalculator} from "@validator-manager/interfaces/IRewardCalculator.sol";
+import {console} from "forge-std/console.sol";
 
 contract CoqnetERC20TokenStakingManagerTest is PoSValidatorManagerTest {
     using SafeERC20 for IERC20Mintable;
@@ -34,10 +35,10 @@ contract CoqnetERC20TokenStakingManagerTest is PoSValidatorManagerTest {
 
     uint256 public constant MINIMUM_STAKE_AMOUNT = 560e24;
     uint256 public constant MAXIMUM_STAKE_AMOUNT = 560e24;
-    uint64 public constant CHURN_PERIOD = 60 seconds;
+    uint64 public constant CHURN_PERIOD = 30 days;
     uint8 public constant MAXIMUM_CHURN_PERCENTAGE = 80;
 
-    uint64 public constant MINIMUM_STAKE_DURATION = 61 seconds;
+    uint64 public constant MINIMUM_STAKE_DURATION = 30 days;
     uint16 public constant MINIMUM_DELEGATION_FEE_BIPS = 100;
     uint8 public constant MAXIMUM_STAKE_MULTIPLIER = 1;
     uint256 public constant WEIGHT_TO_VALUE_FACTOR = 1e25;
@@ -62,6 +63,83 @@ contract CoqnetERC20TokenStakingManagerTest is PoSValidatorManagerTest {
         // _mockGetBlockchainID();
         // _mockInitializeValidatorSet();
         // deal(register, 1 ether);
+    }
+
+    // allows a max of 5 active validators per epoch
+    // cannot register in subsequent validation epochs
+    // drops inactive ValidationIDS
+    // end validation on behalf of keeps rewards for the validator
+    function testCanRegisterUpToMaxValidatorPerEpoch() public {}
+
+    function testCanRegisterOneValidationPerValidatorEveryTwoEpochs() public {
+        _upgrade();
+        _grantRegisterRole(address(this));
+        validatorManager = app;
+        posValidatorManager = app;
+        token = wcoq;
+        uint64 weight = 56;
+
+        deal(address(wcoq), address(this), 20000e24);
+        token.approve(address(app), 2 * _weightToValue(weight));
+
+        uint64 expirationTime = uint64(block.timestamp + 1 days);
+        // solhint-disable func-named-parameters
+        bytes32 validationID = _setUpInitializeValidatorOnBehalfOfRegistration(
+            DEFAULT_NODE_ID, L1_ID, weight, expirationTime, DEFAULT_BLS_PUBLIC_KEY, validator
+        );
+
+        bytes memory l1ValidatorRegistrationMessage =
+            ValidatorMessages.packL1ValidatorRegistrationMessage(validationID, true);
+        _mockGetPChainWarpMessage(l1ValidatorRegistrationMessage, true);
+        app.completeValidatorRegistration(0);
+
+        // retry within current period
+        ValidatorRegistrationInput memory input;
+        vm.expectRevert(CoqnetERC20TokenStakingManager.MustWaitOneEpoch.selector);
+        app.initializeValidatorRegistrationOnBehalfOf(input, 0, 0, 0, validator);
+
+        bytes memory node =
+            bytes(hex"1234567812345678123456781234567812345678123456781234567812345679");
+
+        console.log("time 1", block.timestamp);
+        // retry upon prev epoch ending
+        vm.warp((block.timestamp + 30 days));
+        vm.expectRevert(CoqnetERC20TokenStakingManager.MustWaitOneEpoch.selector);
+        app.initializeValidatorRegistrationOnBehalfOf(input, 0, 0, 0, validator);
+
+        console.log("time 2", block.timestamp);
+        // retry upon +1 period ending (1 epoch after the last registration)
+        expirationTime = uint64(block.timestamp + 30 days + 2);
+        // solhint-disable func-named-parameters
+        _setUpInitializeValidatorOnBehalfOfRegistration(
+            node, L1_ID, weight, expirationTime, DEFAULT_BLS_PUBLIC_KEY, validator
+        );
+    }
+
+    function testStartsANewValidationEpoch() public {
+        _upgrade();
+        _grantRegisterRole(address(this));
+
+        token = wcoq;
+        uint64 weight = 56;
+        deal(address(wcoq), address(this), 10000e24);
+        token.approve(address(app), _weightToValue(weight));
+        // solhint-disable func-named-parameters
+        bytes32 validationID = _setUpInitializeValidatorOnBehalfOfRegistration(
+            DEFAULT_NODE_ID, L1_ID, weight, DEFAULT_EXPIRY, DEFAULT_BLS_PUBLIC_KEY, validator
+        );
+
+        CoqnetERC20TokenStakingManager.ValidationEpoch memory epoch = app.getValidationEpoch();
+        assertEq(epoch.epoch, 1);
+        assertEq(epoch.duration, 30 days);
+        assertEq(epoch.startTime, block.timestamp);
+        assertEq(epoch.endTime, block.timestamp + 30 days);
+
+        bytes32 lastValidationId = app.getLastValidationID(validator);
+        assertEq(lastValidationId, validationID);
+
+        bytes32[] memory activeValidators = app.getActiveValidationIDs();
+        assertEq(activeValidators.length, 1);
     }
 
     function testOnlyAdminCanSetMaxValidators() public {
