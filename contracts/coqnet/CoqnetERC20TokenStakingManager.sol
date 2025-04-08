@@ -50,7 +50,6 @@ contract CoqnetERC20TokenStakingManager is
         uint256 epoch;
         uint256 startTime;
         uint256 endTime;
-        uint256 duration;
         bytes32[] validationIDs;
     }
 
@@ -61,10 +60,8 @@ contract CoqnetERC20TokenStakingManager is
         mapping(address => uint256) _nodesPerValidator;
         mapping(address => bytes32) _lastValidationId;
         mapping(bytes32 => uint256) _validationIdEpoch;
-        bytes32[] _activeValidationIds;
-        ValidationEpoch _epoch;
         mapping(uint256 => ValidationEpoch) _epochs;
-        uint256 currentEpoch;
+        uint256 _currentEpoch;
     }
 
     // solhint-enable private-vars-leading-underscore
@@ -82,6 +79,7 @@ contract CoqnetERC20TokenStakingManager is
 
     uint256 public constant UPTIME_THRESHOLD_PERCENTAGE = 80;
     uint256 public constant MAX_EPOCH_VALIDATORS = 5;
+    uint256 public constant EPOCH_DURATION = 30 days;
 
     error InvalidTokenAddress(address tokenAddress);
     error ValidatorRegistrationExceeded();
@@ -181,14 +179,14 @@ contract CoqnetERC20TokenStakingManager is
         checkRegistration(_msgSender())
         returns (bytes32 validationID)
     {
-        CoqnetMetricsStorage storage $metrics = _getCoqnetMetricsStorage();
-
         validationID = _initializeValidatorRegistration(
             registrationInput, delegationFeeBips, minStakeDuration, stakeAmount
         );
 
-        $metrics._lastValidationId[_msgSender()] = validationID;
-        $metrics._activeValidationIds.push(validationID);
+        CoqnetMetricsStorage storage $ = _getCoqnetMetricsStorage();
+        $._epochs[$._currentEpoch].validationIDs.push(validationID);
+        $._lastValidationId[_msgSender()] = validationID;
+        $._validationIdEpoch[validationID] = $._currentEpoch;
     }
 
     /**
@@ -208,7 +206,6 @@ contract CoqnetERC20TokenStakingManager is
         returns (bytes32 validationID)
     {
         PoSValidatorManagerStorage storage $ = _getPoSValidatorManagerStorage();
-        CoqnetMetricsStorage storage $metrics = _getCoqnetMetricsStorage();
 
         validationID = _initializeValidatorRegistration(
             registrationInput, delegationFeeBips, minStakeDuration, stakeAmount
@@ -217,60 +214,81 @@ contract CoqnetERC20TokenStakingManager is
         $._posValidatorInfo[validationID].owner = validator;
         $._rewardRecipients[validationID] = validator;
 
+        CoqnetMetricsStorage storage $metrics = _getCoqnetMetricsStorage();
+        $metrics._epochs[$metrics._currentEpoch].validationIDs.push(validationID);
         $metrics._lastValidationId[validator] = validationID;
-        $metrics._activeValidationIds.push(validationID);
+        $metrics._validationIdEpoch[validationID] = $metrics._currentEpoch;
     }
 
     function _checkRegistrationEpoch(
         address validator
     ) internal view {
-        ValidatorManagerStorage storage $$ = _getValidatorManagerStorage();
         CoqnetMetricsStorage storage $ = _getCoqnetMetricsStorage();
         bytes32 validationID = $._lastValidationId[validator];
-        console.log(">>> ID", uint256(validationID));
         if (!_isPoSValidator(validationID)) return;
 
-        uint256 endedAt = $$._validationPeriods[validationID].endedAt;
-        uint256 startedAt = $$._validationPeriods[validationID].startedAt;
-        console.log("reg epoch >>>>", block.timestamp, startedAt, endedAt);
+        ValidationEpoch storage epoch = $._epochs[$._currentEpoch];
+        ValidationEpoch storage previousEpoch = $._epochs[$._currentEpoch - 1];
 
-        if (startedAt == 0) revert MustWaitOneEpoch(); // waiting for confirmation acknowledgment
-        if (endedAt == 0) revert MustWaitOneEpoch(); //yet finalized
-        if (block.timestamp - endedAt <= $._epoch.duration) revert MustWaitOneEpoch(); //finalized
+        // has an active validationID
+        if (_findValidationID(epoch.validationIDs, validationID)) {
+            revert MustWaitOneEpoch();
+        }
+        // had an active validationID in the previous epoch
+        if (_findValidationID(previousEpoch.validationIDs, validationID)) {
+            revert MustWaitOneEpoch();
+        }
 
-        //Okay can register another node
+        // Okay can register a node
+    }
+
+    function _findValidationID(
+        bytes32[] memory validationIDs,
+        bytes32 validationID
+    ) internal pure returns (bool) {
+        for (uint256 i = 0; i < validationIDs.length; i++) {
+            if (validationIDs[i] == validationID) return true;
+        }
+
+        return false;
     }
 
     function _checkActiveValidationIDs() internal {
         CoqnetMetricsStorage storage $ = _getCoqnetMetricsStorage();
-        if ($._activeValidationIds.length < MAX_EPOCH_VALIDATORS) return;
+        ValidationEpoch storage epoch = $._epochs[$._currentEpoch];
+        // if the epoch is not full, allow registration
+        if (epoch.validationIDs.length < MAX_EPOCH_VALIDATORS) return;
 
-        (uint256 i, bytes32 validationID) = _findInactiveValidationID();
+        (uint256 i, bytes32 validationID) = _findInactiveValidationID(epoch);
+        // all validators are active
         if (validationID == 0) revert ValidatorRegistrationExceeded();
 
-        // drop the inactive validationID
-        _initializeEndPoSValidationOnBehalfOf(validationID);
-        // clean up from activeValidationIds
-        $._activeValidationIds[i] = $._activeValidationIds[$._activeValidationIds.length - 1];
-        $._activeValidationIds.pop();
+        // remove the inactive validator
+        epoch.validationIDs[i] = epoch.validationIDs[epoch.validationIDs.length - 1];
+        epoch.validationIDs.pop();
     }
 
-    function _findInactiveValidationID()
-        internal
-        view
-        returns (uint256 index, bytes32 inactiveValidationID)
-    {
+    function _findInactiveValidationID(
+        ValidationEpoch memory epoch
+    ) internal view returns (uint256 index, bytes32 inactiveValidationID) {
         PoSValidatorManagerStorage storage $$ = _getPoSValidatorManagerStorage();
-        CoqnetMetricsStorage storage $ = _getCoqnetMetricsStorage();
+        ValidatorManagerStorage storage $ = _getValidatorManagerStorage();
 
-        for (uint256 i = 0; i < $._activeValidationIds.length; i++) {
-            bytes32 validationID = $._activeValidationIds[i];
-            uint256 elapsedUptime = block.timestamp - $._epoch.startTime;
+        for (uint256 i = 0; i < epoch.validationIDs.length; i++) {
+            bytes32 validationID = epoch.validationIDs[i];
+            Validator memory validator = $._validationPeriods[validationID];
+            ValidatorStatus status = validator.status;
+            if (status == ValidatorStatus.Unknown || status == ValidatorStatus.Invalidated) {
+                return (i, validationID);
+            }
+            if (status != ValidatorStatus.Active) continue;
+
+            uint256 elapsedUptime = block.timestamp - validator.startedAt;
             uint256 expectedUptime = (elapsedUptime * UPTIME_THRESHOLD_PERCENTAGE);
             uint256 uptimeSeconds = $$._posValidatorInfo[validationID].uptimeSeconds;
             // Check if the validator's uptime is below the expected uptime
             // 100 % of the time
-            if (uptimeSeconds * 100 < expectedUptime) {
+            if ((uptimeSeconds * 100) < expectedUptime) {
                 return (i, validationID);
             }
         }
@@ -279,43 +297,15 @@ contract CoqnetERC20TokenStakingManager is
     }
 
     function _checkAndUpdateValidationEpoch() internal {
-        console.log(">>>attempting drop");
         CoqnetMetricsStorage storage $ = _getCoqnetMetricsStorage();
-        console.log(">>>", block.timestamp, $._epoch.endTime);
-        if (block.timestamp < $._epoch.endTime) return;
+        ValidationEpoch storage epoch = $._epochs[$._currentEpoch];
+        if (block.timestamp < epoch.endTime && epoch.startTime > 0) return;
 
-        // drop the inactive validationIDs
-        if ($._activeValidationIds.length > 0) {
-            for (uint256 i = 0; i < $._activeValidationIds.length; i++) {
-                console.log(">>>droping inactive validators");
-                bytes32 validationID = $._activeValidationIds[i];
-                _initializeEndPoSValidationOnBehalfOf(validationID);
-                $._activeValidationIds.pop();
-            }
-        }
-        console.log(">>>new epoch");
         // start next epoch
-        $._epoch.epoch++;
-        $._epoch.duration = 30 days;
-        $._epoch.startTime = block.timestamp;
-        $._epoch.endTime = block.timestamp + 30 days;
-    }
-
-    function _initializeEndPoSValidationOnBehalfOf(
-        bytes32 validationID
-    ) internal {
-        PoSValidatorManagerStorage storage $$ = _getPoSValidatorManagerStorage();
-        ValidatorManagerStorage storage $ = _getValidatorManagerStorage();
-        // take ownership temporarily for EndPoSValidation On behalf
-        address owner = $$._posValidatorInfo[validationID].owner;
-        ValidatorStatus status = $._validationPeriods[validationID].status;
-        if (status != ValidatorStatus.Active) return;
-
-        $$._posValidatorInfo[validationID].owner = _msgSender();
-        // endValidation On behalf whether eligible or not for rewards
-        _initializeEndPoSValidation(validationID, false, 0, owner);
-        // restore ownership
-        $$._posValidatorInfo[validationID].owner = owner;
+        ValidationEpoch storage nextEpoch = $._epochs[++$._currentEpoch];
+        nextEpoch.epoch = $._currentEpoch;
+        nextEpoch.startTime = block.timestamp;
+        nextEpoch.endTime = block.timestamp + EPOCH_DURATION;
     }
 
     /**
@@ -369,14 +359,19 @@ contract CoqnetERC20TokenStakingManager is
             revert UnauthorizedOwner(_msgSender());
         }
 
-        CoqnetMetricsStorage storage $metrics = _getCoqnetMetricsStorage();
-        if ($metrics._nodesPerValidator[_msgSender()] > 0) {
-            --$metrics._nodesPerValidator[_msgSender()];
-        }
-
-        return super._initializeEndPoSValidation(
+        bool rewarded = super._initializeEndPoSValidation(
             validationID, includeUptimeProof, messageIndex, rewardRecipient
         );
+
+        CoqnetMetricsStorage storage $metrics = _getCoqnetMetricsStorage();
+        uint256 epoch = $metrics._validationIdEpoch[validationID];
+        if (!_findValidationID($metrics._epochs[epoch].validationIDs, validationID)) {
+            // remove its rewards if ended up inactive
+            PoSValidatorManagerStorage storage $ = _getPoSValidatorManagerStorage();
+            $._redeemableValidatorRewards[validationID] = 0;
+        }
+
+        return rewarded;
     }
 
     function _initializeEndValidation(
@@ -387,13 +382,11 @@ contract CoqnetERC20TokenStakingManager is
 
         super._initializeEndValidation(validationID);
 
-        // end at current time or epoch end time
-        uint256 endedAt =
-            block.timestamp >= $metrics._epoch.endTime ? $metrics._epoch.endTime : block.timestamp;
+        // end validation at its epoch end time or current block time
+        uint256 epochEndTime = $metrics._epochs[$metrics._currentEpoch].endTime;
+        uint256 endedAt = block.timestamp >= epochEndTime ? epochEndTime : block.timestamp;
 
         $._validationPeriods[validationID].endedAt = uint64(endedAt);
-        console.log(">>>>>e", $metrics._epoch.endTime);
-        console.log(">>>>>", endedAt);
         validator = $._validationPeriods[validationID];
     }
 
@@ -426,9 +419,11 @@ contract CoqnetERC20TokenStakingManager is
     }
 
     // @todo: remove this function
-    function getValidationEpoch() external view returns (ValidationEpoch memory epoch) {
+    function getValidationEpoch(
+        uint256 epochIdx
+    ) external view returns (ValidationEpoch memory epoch) {
         CoqnetMetricsStorage storage $ = _getCoqnetMetricsStorage();
-        epoch = $._epoch;
+        epoch = $._epochs[epochIdx];
     }
 
     // @todo: remove this function
@@ -438,14 +433,10 @@ contract CoqnetERC20TokenStakingManager is
         CoqnetMetricsStorage storage $ = _getCoqnetMetricsStorage();
         return $._lastValidationId[validator];
     }
-
     // @todo: remove this function
-    function getActiveValidationIDs()
-        external
-        view
-        returns (bytes32[] memory activeValidationIDs)
-    {
+
+    function getCurrentEpochIndex() external view returns (uint256) {
         CoqnetMetricsStorage storage $ = _getCoqnetMetricsStorage();
-        return $._activeValidationIds;
+        return $._currentEpoch;
     }
 }

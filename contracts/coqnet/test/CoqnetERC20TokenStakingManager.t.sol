@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity 0.8.25;
 
 import {CoqnetERC20TokenStakingManager} from "../CoqnetERC20TokenStakingManager.sol";
@@ -23,7 +22,14 @@ import {WCOQ} from "../WCOQ.sol";
 import {ValidatorMessages} from "@validator-manager/ValidatorMessages.sol";
 import {ValidatorManagerSettings} from "@validator-manager/interfaces/IValidatorManager.sol";
 import {IRewardCalculator} from "@validator-manager/interfaces/IRewardCalculator.sol";
-import {console} from "forge-std/console.sol";
+import {
+    WarpMessage,
+    IWarpMessenger
+} from "@avalabs/subnet-evm-contracts@1.2.0/contracts/interfaces/IWarpMessenger.sol";
+
+import "./../RewardsCalculator.sol";
+
+import "forge-std/console.sol";
 
 contract CoqnetERC20TokenStakingManagerTest is PoSValidatorManagerTest {
     using SafeERC20 for IERC20Mintable;
@@ -51,25 +57,255 @@ contract CoqnetERC20TokenStakingManagerTest is PoSValidatorManagerTest {
     ITransparentUpgradeableProxy public proxy =
         ITransparentUpgradeableProxy(0x0ec8F51391b3976B406ec182c8c22e537Ff14ECa);
     CoqnetERC20TokenStakingManager public app = CoqnetERC20TokenStakingManager(address(proxy));
-    WCOQ public wcoq = WCOQ(0xb59cef61f498E699A045d1fdE968ac8af7b35Ffb);
+    WCOQ public wcoq = WCOQ(0x5bA67Aa90c0d947D1f953774e44bB4d926C62fd8);
     WCOQ public token;
+
+    address public validatorOwner = 0xb4f69B081E784d50FF0a1ec1d46570ABAC7a221d;
 
     address public validator = makeAddr("validator");
     address public register = makeAddr("register");
-    address public validatorOwner = 0xb4f69B081E784d50FF0a1ec1d46570ABAC7a221d;
 
     function setUp() public override {
         // _setUp();
         // _mockGetBlockchainID();
         // _mockInitializeValidatorSet();
         // deal(register, 1 ether);
+        validatorManager = app;
+        posValidatorManager = app;
+        token = wcoq;
+        deal(address(wcoq), address(this), 50000e24);
+        token.approve(address(app), type(uint256).max);
+
+        bytes32 role = token.ISSUER_ROLE();
+        vm.prank(validatorOwner);
+        token.grantRole(role, address(app));
     }
 
-    // allows a max of 5 active validators per epoch
-    // cannot register in subsequent validation epochs
-    // drops inactive ValidationIDS
-    // end validation on behalf of keeps rewards for the validator
-    function testCanRegisterUpToMaxValidatorPerEpoch() public {}
+    // known issues, if validation completes within min stake duration and epoch end time, wont be able to end validation nor claim rewards
+
+    function testRewardsToActiveValidatorsUpToEpochEndTime() public {
+        _upgrade();
+        _grantRegisterRole(address(this));
+        uint64 weight = 56;
+
+        bytes32 validationID = _setUpInitializeValidatorOnBehalfOfRegistration(
+            DEFAULT_NODE_ID,
+            L1_ID,
+            weight,
+            uint64(vm.getBlockTimestamp()),
+            DEFAULT_BLS_PUBLIC_KEY,
+            validator
+        );
+
+        bytes memory l1ValidatorRegistrationMessage =
+            ValidatorMessages.packL1ValidatorRegistrationMessage(validationID, true);
+        _mockGetPChainWarpMessage(l1ValidatorRegistrationMessage, true);
+        app.completeValidatorRegistration(0);
+
+        vm.warp(block.timestamp + 45 days + 2);
+
+        bytes memory uptimeMsg =
+            ValidatorMessages.packValidationUptimeMessage(validationID, 45 days);
+        _mockGetUptimeWarpMessage(uptimeMsg, true);
+        posValidatorManager.submitUptimeProof(validationID, 0);
+
+        vm.prank(validator);
+        app.initializeEndValidation(validationID, false, 0);
+
+        bytes memory endValidationMessage =
+            ValidatorMessages.packL1ValidatorRegistrationMessage(validationID, false);
+        _mockGetPChainWarpMessage(endValidationMessage, true);
+
+        // _expectRewardIssuance(, 0);
+        // calculate upto 30 days
+        app.completeEndValidation(0);
+    }
+
+    function testRemovesRewardsOfInactiveValidators() public {
+        _upgrade();
+        _grantRegisterRole(address(this));
+        uint64 weight = 56;
+
+        uint64 expirationTime;
+
+        bytes32[] memory validationIDs = new bytes32[](5);
+        for (uint256 i = 0; i < 5; i++) {
+            bytes memory node = abi.encodePacked(
+                hex"1234567812345678123456781234567812345678123456781234567812345680",
+                bytes1(uint8(i))
+            );
+
+            expirationTime = uint64(vm.getBlockTimestamp() + 1);
+            bytes32 validationID = _setUpInitializeValidatorOnBehalfOfRegistration(
+                node, L1_ID, weight, expirationTime, DEFAULT_BLS_PUBLIC_KEY, address(uint160(i + 1))
+            );
+            validationIDs[i] = validationID;
+
+            bytes memory l1ValidatorRegistrationMessage =
+                ValidatorMessages.packL1ValidatorRegistrationMessage(validationID, true);
+            _mockGetPChainWarpMessage(l1ValidatorRegistrationMessage, true);
+            app.completeValidatorRegistration(0);
+
+            vm.warp(vm.getBlockTimestamp() + 60 minutes);
+
+            bytes memory uptimeMsg =
+                ValidatorMessages.packValidationUptimeMessage(validationID, 60 minutes);
+            _mockGetUptimeWarpMessage(uptimeMsg, true);
+            posValidatorManager.submitUptimeProof(validationID, 0);
+        }
+
+        expirationTime = uint64(vm.getBlockTimestamp() + 1);
+        _setUpInitializeValidatorOnBehalfOfRegistration(
+            DEFAULT_NODE_ID, L1_ID, weight, expirationTime, DEFAULT_BLS_PUBLIC_KEY, address(9)
+        );
+
+        vm.warp(vm.getBlockTimestamp() + 15 days);
+
+        // submit uptime proof
+        bytes memory uptimeMsg2 =
+            ValidatorMessages.packValidationUptimeMessage(validationIDs[0], 12 days);
+        _mockGetUptimeWarpMessage(uptimeMsg2, true);
+        posValidatorManager.submitUptimeProof(validationIDs[0], 0);
+
+        vm.warp(vm.getBlockTimestamp() + 15 days + 1);
+
+        vm.prank(address(1));
+        app.forceInitializeEndValidation(validationIDs[0], true, 0);
+
+        bytes memory l1ValidatorasEndMessage =
+            ValidatorMessages.packL1ValidatorRegistrationMessage(validationIDs[0], false);
+        _mockGetPChainWarpMessage(l1ValidatorasEndMessage, true);
+        _expectRewardIssuance(address(1), 0);
+        app.completeEndValidation(0);
+    }
+
+    // ends all validations at epochs endTime
+    // Should register within min stake duration and epoch end Time
+    function testCreatesNewEpochUponEpochEnding() public {
+        _upgrade();
+        _grantRegisterRole(address(this));
+        uint64 weight = 56;
+        bytes memory node =
+            bytes(hex"1234567812345678123456781234567812345678123456781234567812345680");
+        uint64 expirationTime = uint64(block.timestamp + 1);
+        _setUpInitializeValidatorOnBehalfOfRegistration(
+            node, L1_ID, weight, expirationTime, DEFAULT_BLS_PUBLIC_KEY, address(100)
+        );
+
+        uint256 currentEpoch = app.getCurrentEpochIndex();
+        assertEq(currentEpoch, 1);
+
+        // advance
+        vm.warp(block.timestamp + 30 days + 2);
+
+        node = bytes(hex"1234567812345678123456781234567812345678123456781234567812345681");
+        expirationTime = uint64(vm.getBlockTimestamp());
+        _setUpInitializeValidatorOnBehalfOfRegistration(
+            node, L1_ID, weight, expirationTime, DEFAULT_BLS_PUBLIC_KEY, address(101)
+        );
+
+        currentEpoch = app.getCurrentEpochIndex();
+        assertEq(currentEpoch, 2);
+    }
+
+    function testCannotRegisterIfAllsValidationsAreActive() public {
+        _upgrade();
+        _grantRegisterRole(address(this));
+        validatorManager = app;
+        posValidatorManager = app;
+        token = wcoq;
+        uint64 weight = 56;
+        deal(address(wcoq), address(this), 50000e24);
+        token.approve(address(app), type(uint256).max);
+
+        for (uint256 i = 0; i < 5; i++) {
+            bytes memory node = abi.encodePacked(
+                hex"1234567812345678123456781234567812345678123456781234567812345680",
+                bytes1(uint8(i)) // Increment last byte
+            );
+
+            uint64 expirationTime = uint64(block.timestamp + 1);
+            bytes32 validationID = _setUpInitializeValidatorOnBehalfOfRegistration(
+                node, L1_ID, weight, expirationTime, DEFAULT_BLS_PUBLIC_KEY, address(uint160(i + 1))
+            );
+
+            bytes memory l1ValidatorRegistrationMessage =
+                ValidatorMessages.packL1ValidatorRegistrationMessage(validationID, true);
+            _mockGetPChainWarpMessage(l1ValidatorRegistrationMessage, true);
+            app.completeValidatorRegistration(0);
+
+            uint256 startTime = vm.getBlockTimestamp();
+            vm.warp(startTime + 60 minutes);
+            uint64 uptime = uint64(block.timestamp - startTime);
+            bytes memory uptimeMsg =
+                ValidatorMessages.packValidationUptimeMessage(validationID, uptime);
+            _mockGetUptimeWarpMessage(uptimeMsg, true);
+            posValidatorManager.submitUptimeProof(validationID, 0);
+        }
+
+        ValidatorRegistrationInput memory input;
+        vm.expectRevert(CoqnetERC20TokenStakingManager.ValidatorRegistrationExceeded.selector);
+        app.initializeValidatorRegistrationOnBehalfOf(input, 0, 0, 0, validator);
+    }
+
+    function testInvalidatesAndReplacesAnInactiveValidationID() public {
+        _upgrade();
+        _grantRegisterRole(address(this));
+        uint64 weight = 56;
+        deal(address(wcoq), address(this), 50000e24);
+        token.approve(address(app), type(uint256).max);
+
+        for (uint256 i = 0; i < 5; i++) {
+            bytes memory node = abi.encodePacked(
+                hex"1234567812345678123456781234567812345678123456781234567812345680",
+                bytes1(uint8(i)) // Increment last byte
+            );
+            uint64 expirationTime = uint64(block.timestamp + 1);
+            bytes32 validationID = _setUpInitializeValidatorOnBehalfOfRegistration(
+                node, L1_ID, weight, expirationTime, DEFAULT_BLS_PUBLIC_KEY, address(uint160(i))
+            );
+
+            bytes memory l1ValidatorRegistrationMessage =
+                ValidatorMessages.packL1ValidatorRegistrationMessage(validationID, true);
+            _mockGetPChainWarpMessage(l1ValidatorRegistrationMessage, true);
+            app.completeValidatorRegistration(0);
+            vm.warp(block.timestamp + 1);
+        }
+
+        uint64 expirationTime1 = uint64(block.timestamp + 1);
+        // solhint-disable func-named-parameters
+        _setUpInitializeValidatorOnBehalfOfRegistration(
+            DEFAULT_NODE_ID, L1_ID, weight, expirationTime1, DEFAULT_BLS_PUBLIC_KEY, address(100)
+        );
+    }
+
+    function testCanRegisterUpToMaxValidatorPerEpoch() public {
+        _upgrade();
+        _grantRegisterRole(address(this));
+        validatorManager = app;
+        posValidatorManager = app;
+        token = wcoq;
+        uint64 weight = 56;
+
+        deal(address(wcoq), address(this), 50000e24);
+        token.approve(address(app), type(uint256).max);
+
+        for (uint256 i = 0; i < 5; i++) {
+            bytes memory node = abi.encodePacked(
+                hex"1234567812345678123456781234567812345678123456781234567812345680",
+                bytes1(uint8(i)) // Increment last byte
+            );
+            uint64 expirationTime = uint64(block.timestamp + 1 days);
+            // solhint-disable func-named-parameters
+            _setUpInitializeValidatorOnBehalfOfRegistration(
+                node, L1_ID, weight, expirationTime, DEFAULT_BLS_PUBLIC_KEY, address(uint160(i))
+            );
+        }
+
+        ValidatorRegistrationInput memory input;
+        vm.expectRevert(CoqnetERC20TokenStakingManager.ValidatorRegistrationExceeded.selector);
+        app.initializeValidatorRegistrationOnBehalfOf(input, 0, 0, 0, validator);
+    }
 
     function testCanRegisterOneValidationPerValidatorEveryTwoEpochs() public {
         _upgrade();
@@ -79,8 +315,8 @@ contract CoqnetERC20TokenStakingManagerTest is PoSValidatorManagerTest {
         token = wcoq;
         uint64 weight = 56;
 
-        deal(address(wcoq), address(this), 20000e24);
-        token.approve(address(app), 2 * _weightToValue(weight));
+        deal(address(wcoq), address(this), 50000e24);
+        token.approve(address(app), type(uint256).max);
 
         uint64 expirationTime = uint64(block.timestamp + 1 days);
         // solhint-disable func-named-parameters
@@ -101,15 +337,19 @@ contract CoqnetERC20TokenStakingManagerTest is PoSValidatorManagerTest {
         bytes memory node =
             bytes(hex"1234567812345678123456781234567812345678123456781234567812345679");
 
-        console.log("time 1", block.timestamp);
         // retry upon prev epoch ending
         vm.warp((block.timestamp + 30 days));
         vm.expectRevert(CoqnetERC20TokenStakingManager.MustWaitOneEpoch.selector);
         app.initializeValidatorRegistrationOnBehalfOf(input, 0, 0, 0, validator);
+        expirationTime = uint64(block.timestamp + 1);
+        // make an epoch with some validators
+        _setUpInitializeValidatorOnBehalfOfRegistration(
+            node, L1_ID, weight, expirationTime, DEFAULT_BLS_PUBLIC_KEY, address(100000)
+        );
 
-        console.log("time 2", block.timestamp);
+        node = bytes(hex"1234567812345678123456781234567812345678123456781234567812345680");
         // retry upon +1 period ending (1 epoch after the last registration)
-        expirationTime = uint64(block.timestamp + 30 days + 2);
+        expirationTime = uint64(block.timestamp + 30 days + 1);
         // solhint-disable func-named-parameters
         _setUpInitializeValidatorOnBehalfOfRegistration(
             node, L1_ID, weight, expirationTime, DEFAULT_BLS_PUBLIC_KEY, validator
@@ -129,17 +369,13 @@ contract CoqnetERC20TokenStakingManagerTest is PoSValidatorManagerTest {
             DEFAULT_NODE_ID, L1_ID, weight, DEFAULT_EXPIRY, DEFAULT_BLS_PUBLIC_KEY, validator
         );
 
-        CoqnetERC20TokenStakingManager.ValidationEpoch memory epoch = app.getValidationEpoch();
+        CoqnetERC20TokenStakingManager.ValidationEpoch memory epoch = app.getValidationEpoch(1);
         assertEq(epoch.epoch, 1);
-        assertEq(epoch.duration, 30 days);
         assertEq(epoch.startTime, block.timestamp);
         assertEq(epoch.endTime, block.timestamp + 30 days);
 
         bytes32 lastValidationId = app.getLastValidationID(validator);
         assertEq(lastValidationId, validationID);
-
-        bytes32[] memory activeValidators = app.getActiveValidationIDs();
-        assertEq(activeValidators.length, 1);
     }
 
     function testOnlyAdminCanSetMaxValidators() public {
@@ -239,9 +475,9 @@ contract CoqnetERC20TokenStakingManagerTest is PoSValidatorManagerTest {
 
     function _upgrade() internal {
         PoSValidatorManagerSettings memory settings = _defaultCoqPoSSettings();
+        settings.rewardCalculator = new RewardsCalculator(1000);
         CoqnetERC20TokenStakingManager impl =
             new CoqnetERC20TokenStakingManager(ICMInitializable.Disallowed);
-
         bytes memory data = abi.encodeCall(
             app.initialize, (settings, IERC20Mintable(address(wcoq)), validatorOwner)
         );
