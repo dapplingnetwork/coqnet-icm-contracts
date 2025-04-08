@@ -24,12 +24,12 @@ import {AccessControlUpgradeable} from
     "@openzeppelin/contracts-upgradeable@5.0.2/access/AccessControlUpgradeable.sol";
 
 import "forge-std/console.sol";
-
 /**
  * @dev Implementation of the {IERC20TokenStakingManager} interface.
  *
  * @custom:security-contact https://github.com/ava-labs/icm-contracts/blob/main/SECURITY.md
  */
+
 contract CoqnetERC20TokenStakingManager is
     Initializable,
     AccessControlUpgradeable,
@@ -259,10 +259,12 @@ contract CoqnetERC20TokenStakingManager is
         // if the epoch is not full, allow registration
         if (epoch.validationIDs.length < MAX_EPOCH_VALIDATORS) return;
 
+        console.log("finding");
         (uint256 i, bytes32 validationID) = _findInactiveValidationID(epoch);
         // all validators are active
         if (validationID == 0) revert ValidatorRegistrationExceeded();
-
+        console.log("found");
+        console.logUint(i);
         // remove the inactive validator
         epoch.validationIDs[i] = epoch.validationIDs[epoch.validationIDs.length - 1];
         epoch.validationIDs.pop();
@@ -288,6 +290,9 @@ contract CoqnetERC20TokenStakingManager is
             uint256 uptimeSeconds = $$._posValidatorInfo[validationID].uptimeSeconds;
             // Check if the validator's uptime is below the expected uptime
             // 100 % of the time
+            console.log("uptime calc");
+            console.logUint(uptimeSeconds);
+            console.logUint(expectedUptime);
             if ((uptimeSeconds * 100) < expectedUptime) {
                 return (i, validationID);
             }

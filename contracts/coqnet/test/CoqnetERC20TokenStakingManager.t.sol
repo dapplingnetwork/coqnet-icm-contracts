@@ -29,8 +29,6 @@ import {
 
 import "./../RewardsCalculator.sol";
 
-import "forge-std/console.sol";
-
 contract CoqnetERC20TokenStakingManagerTest is PoSValidatorManagerTest {
     using SafeERC20 for IERC20Mintable;
 
@@ -218,25 +216,30 @@ contract CoqnetERC20TokenStakingManagerTest is PoSValidatorManagerTest {
         deal(address(wcoq), address(this), 50000e24);
         token.approve(address(app), type(uint256).max);
 
+        bytes32[] memory validatorIDs = new bytes32[](5);
+
         for (uint256 i = 0; i < 5; i++) {
             bytes memory node = abi.encodePacked(
                 hex"1234567812345678123456781234567812345678123456781234567812345680",
                 bytes1(uint8(i)) // Increment last byte
             );
 
-            uint64 expirationTime = uint64(block.timestamp + 1);
+            uint64 expirationTime = uint64(vm.getBlockTimestamp() + 1);
             bytes32 validationID = _setUpInitializeValidatorOnBehalfOfRegistration(
                 node, L1_ID, weight, expirationTime, DEFAULT_BLS_PUBLIC_KEY, address(uint160(i + 1))
             );
+            validatorIDs[i] = validationID;
 
             bytes memory l1ValidatorRegistrationMessage =
                 ValidatorMessages.packL1ValidatorRegistrationMessage(validationID, true);
             _mockGetPChainWarpMessage(l1ValidatorRegistrationMessage, true);
             app.completeValidatorRegistration(0);
 
-            uint256 startTime = vm.getBlockTimestamp();
-            vm.warp(startTime + 60 minutes);
-            uint64 uptime = uint64(block.timestamp - startTime);
+            vm.warp(vm.getBlockTimestamp() + 60 minutes);
+        }
+        for (uint256 i = 0; i < 5; i++) {
+            uint64 uptime = uint64(4.5 hours);
+            bytes32 validationID = validatorIDs[i];
             bytes memory uptimeMsg =
                 ValidatorMessages.packValidationUptimeMessage(validationID, uptime);
             _mockGetUptimeWarpMessage(uptimeMsg, true);
@@ -260,7 +263,7 @@ contract CoqnetERC20TokenStakingManagerTest is PoSValidatorManagerTest {
                 hex"1234567812345678123456781234567812345678123456781234567812345680",
                 bytes1(uint8(i)) // Increment last byte
             );
-            uint64 expirationTime = uint64(block.timestamp + 1);
+            uint64 expirationTime = uint64(vm.getBlockTimestamp() + 1);
             bytes32 validationID = _setUpInitializeValidatorOnBehalfOfRegistration(
                 node, L1_ID, weight, expirationTime, DEFAULT_BLS_PUBLIC_KEY, address(uint160(i))
             );
@@ -269,7 +272,7 @@ contract CoqnetERC20TokenStakingManagerTest is PoSValidatorManagerTest {
                 ValidatorMessages.packL1ValidatorRegistrationMessage(validationID, true);
             _mockGetPChainWarpMessage(l1ValidatorRegistrationMessage, true);
             app.completeValidatorRegistration(0);
-            vm.warp(block.timestamp + 1);
+            vm.warp(vm.getBlockTimestamp() + 1);
         }
 
         uint64 expirationTime1 = uint64(block.timestamp + 1);
